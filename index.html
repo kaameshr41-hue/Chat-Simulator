@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>WhatsApp Chat Simulator</title>
+<style>
+  :root{
+    --bg:#e9edef; --chat-bg:#f6f7f8; --me-bg:#25D366; --them-bg:#fff;
+    --text-dark:#111; --muted:#888; --max-width:420px;
+  }
+  *{box-sizing:border-box}
+  body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(180deg,var(--bg),#f0f2f3); font-family: "Helvetica Neue", Arial, sans-serif; padding:20px; }
+  .frame{ width:100%; max-width:var(--max-width); height:88vh; background:var(--chat-bg);
+    border-radius:14px; box-shadow:0 18px 40px rgba(0,0,0,0.14); display:flex; flex-direction:column; overflow:hidden; }
+
+  .topbar{ height:64px; background:#075E54; color:#fff; display:flex; gap:12px; align-items:center; padding:10px 12px; }
+  .avatar{ width:44px;height:44px;border-radius:50%; background:linear-gradient(45deg,#7b8cff,#10c2a8);
+    display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff; }
+  .contact{ display:flex;flex-direction:column; justify-content:center; }
+  .contact .name{font-size:15px;font-weight:700}
+  .contact .status{font-size:12px; color:rgba(255,255,255,0.9)}
+
+  .chat { flex:1; padding:14px; overflow:auto; display:flex; flex-direction:column; gap:8px; }
+  .row{ display:flex; align-items:flex-end; gap:8px }
+  .row.me{ justify-content:flex-end }
+  .bubble{ max-width:78%; padding:10px 12px; border-radius:18px; line-height:1.35; position:relative;
+    cursor:pointer; user-select:text; box-shadow:0 6px 14px rgba(0,0,0,0.06); transform-origin: bottom right;
+    opacity:0; transform: translateY(8px) scale(.995); }
+  .bubble.show{ opacity:1; transform: translateY(0) scale(1); transition: all 220ms cubic-bezier(.2,.9,.2,1); }
+  .bubble.me{ background:var(--me-bg); color:#fff; border-radius:18px 18px 4px 18px; }
+  .bubble.them{ background:var(--them-bg); color:var(--text-dark); border-radius:18px 18px 18px 4px; }
+  .meta{ display:flex; gap:8px; font-size:11px; color:var(--muted); margin-top:6px; align-items:center; justify-content:flex-end; }
+
+  .typing { display:inline-flex; gap:6px; align-items:center; padding:8px 12px; background:#fff; border-radius:14px;
+    box-shadow: inset 0 -5px 12px rgba(0,0,0,0.03); }
+  .dot{ width:7px; height:7px; border-radius:50%; background:#bbb; opacity:0.9; animation: bounce 750ms infinite; }
+  .dot:nth-child(2){ animation-delay:120ms } .dot:nth-child(3){ animation-delay:240ms }
+  @keyframes bounce { 0%{ transform:translateY(0); opacity:.6 } 50%{ transform:translateY(-6px); opacity:1 } 100%{ transform:translateY(0); opacity:.6 } }
+
+  .footer{ height:62px; display:flex; align-items:center; gap:10px; padding:10px; border-top:1px solid rgba(0,0,0,0.04); background:#fff; }
+  .fake-input{ flex:1; height:40px; border-radius:20px; background:#f2f2f2; padding:8px 14px; color:#555; display:flex; align-items:center; gap:8px; font-size:14px; }
+  .icon{ width:34px; height:34px; border-radius:50%; background:#eee; display:inline-flex; align-items:center; justify-content:center; font-weight:700; }
+
+  .overlay{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,0.45); z-index:90; }
+  .overlay.show{ display:flex }
+  .modal{ width:92%; max-width:520px; background:#fff; border-radius:12px; padding:16px; box-shadow:0 20px 60px rgba(0,0,0,0.3); }
+  .modal .title{ font-weight:700; margin-bottom:8px }
+  .modal .msg{ background:#f6f7f8; padding:14px; border-radius:10px; white-space:pre-wrap; color:var(--text-dark) }
+  .modal .actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:12px }
+  .btn{ padding:8px 12px; border-radius:8px; border:0; cursor:pointer; font-weight:700 }
+  .btn.ghost{ background:transparent; color:#444 } .btn.primary{ background:var(--me-bg); color:#fff }
+
+</style>
+</head>
+<body>
+
+<div class="frame">
+  <div class="topbar">
+    <div class="avatar">KR</div>
+    <div class="contact">
+      <div class="name">Kaamesh</div>
+      <div class="status">online</div>
+    </div>
+  </div>
+
+  <div class="chat" id="chat"></div>
+
+  <div class="footer">
+    <div class="fake-input">
+      <div class="icon">🙂</div>
+      <div style="opacity:0.7">Tap the last message to reveal the surprise</div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="title">Message preview</div>
+    <div class="msg" id="modalMsg"></div>
+    <div class="actions">
+      <button class="btn ghost" id="closeModal">Close</button>
+      <button class="btn primary" id="copyMsg">Copy</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ==== Your final messages ==== */
+const messages = [
+  {who:'them', text: "Hey you know something"},
+  {who:'them', text: "wait wait don't think too long"},
+  {who:'them', text: "you are the sweetest person I have ever met"},
+  {who:'them', text: "Aadathaa....😂💙", popup: true}  // SECRET
+];
+
+const chatEl = document.getElementById('chat');
+const overlay = document.getElementById('overlay');
+const modalMsg = document.getElementById('modalMsg');
+const closeModal = document.getElementById('closeModal');
+const copyBtn = document.getElementById('copyMsg');
+
+/* Typing animation */
+function appendTyping(who){
+  const row = document.createElement('div');
+  row.className = 'row ' + (who=='me'?'me':'');
+  row.innerHTML = `<div class="bubble typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>`;
+  chatEl.appendChild(row);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return row;
+}
+
+/* Add message bubble */
+function addBubble(who, text, popup){
+  const row = document.createElement('div');
+  row.className = 'row ' + (who=='me'?'me':'');
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble them';
+  bubble.dataset.text = text;
+  bubble.dataset.popup = popup ? "1" : "0";
+
+  if(popup){
+    bubble.innerHTML = `<div class="content">Tap to reveal 🔒</div><div class="meta"><span>${timeNow()}</span></div>`;
+    bubble.onclick = () => showPopup(text);
+  } else {
+    bubble.innerHTML = `<div class="content">${text}</div><div class="meta"><span>${timeNow()}</span></div>`;
+  }
+
+  row.appendChild(bubble);
+  chatEl.appendChild(row);
+
+  setTimeout(()=> bubble.classList.add("show"), 20);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+function timeNow(){
+  const d = new Date();
+  return String(d.getHours()).padStart(2,'0') + ":" + String(d.getMinutes()).padStart(2,'0');
+}
+
+/* Play conversation */
+async function playChat(){
+  for(const msg of messages){
+    const t = appendTyping(msg.who);
+    await new Promise(r=>setTimeout(r, 900 + msg.text.length*20));
+    t.remove();
+    addBubble(msg.who,msg.text,msg.popup);
+    await new Promise(r=>setTimeout(r, 200));
+  }
+}
+
+/* Popup controls */
+function showPopup(text){
+  modalMsg.textContent = text;
+  overlay.classList.add("show");
+  if(navigator.vibrate) navigator.vibrate(40);
+}
+
+closeModal.onclick = ()=> overlay.classList.remove("show");
+overlay.onclick = (e)=> { if(e.target===overlay) overlay.classList.remove("show"); };
+
+copyBtn.onclick = async ()=>{
+  try{
+    await navigator.clipboard.writeText(modalMsg.textContent);
+    copyBtn.textContent = "Copied!";
+    setTimeout(()=> copyBtn.textContent="Copy",1000);
+  }catch(e){}
+};
+
+/* Start */
+playChat();
+</script>
+</body>
+</html>
